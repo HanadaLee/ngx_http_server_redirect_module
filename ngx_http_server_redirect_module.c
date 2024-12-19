@@ -3,25 +3,24 @@
 #include <ngx_http.h>
 
 
-static void * ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
-static ngx_int_t ngx_http_server_redirect_find_virtual_server(
-    ngx_http_request_t *r, u_char *host, size_t len);
-static char * ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd,
-    void *conf);
-static ngx_int_t ngx_http_server_redirect_handler(ngx_http_request_t *r);
-
-
 typedef struct {
     ngx_str_t   new_server;
 } ngx_http_server_redirect_conf_t;
 
 
+static void * ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
+static char * ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static ngx_int_t ngx_http_server_redirect_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_server_redirect_post_config(ngx_conf_t *cf);
+static ngx_int_t ngx_http_server_redirect_find_virtual_server(ngx_http_request_t *r, u_char *host, size_t len);
+
+
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
     { ngx_string("server_redirect"),
-      NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_SRV_CONF | NGX_CONF_TAKE1,
       ngx_http_server_redirect,
-      NGX_HTTP_LOC_CONF_OFFSET,
+      NGX_HTTP_SRV_CONF_OFFSET,
       0,
       NULL },
 
@@ -31,45 +30,41 @@ static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
 static ngx_http_module_t  ngx_http_server_redirect_module_ctx = {
     NULL,                                   /* preconfiguration */
-    NULL,                                   /* postconfiguration */
+    ngx_http_server_redirect_post_config,   /* postconfiguration */
 
     NULL,                                   /* create main configuration */
     NULL,                                   /* init main configuration */
 
-    NULL,                                   /* create server configuration */
+    ngx_http_server_redirect_create_conf,   /* create server configuration */
     NULL,                                   /* merge server configuration */
 
-    ngx_http_server_redirect_create_conf,   /* create location configuration */
-    NULL,                                   /* merge location configuration */
+    NULL,                                   /* create location configuration */
+    NULL                                    /* merge location configuration */
 };
 
 
 ngx_module_t  ngx_http_server_redirect_module = {
     NGX_MODULE_V1,
-    &ngx_http_server_redirect_module_ctx, 	/* module context */
-    ngx_http_server_redirect_commands,		/* module directives */
-    NGX_HTTP_MODULE,                    	/* module type */
-    NULL,                               	/* init master */
-    NULL,    							  	/* init module */
-    NULL,                                 	/* init process */
-    NULL,                                  	/* init thread */
-    NULL,                                  	/* exit thread */
-    NULL,                                  	/* exit process */
-    NULL,                                  	/* exit master */
+    &ngx_http_server_redirect_module_ctx,  /* module context */
+    ngx_http_server_redirect_commands,     /* module directives */
+    NGX_HTTP_MODULE,                       /* module type */
+    NULL,                                  /* init master */
+    NULL,                                  /* init module */
+    NULL,                                  /* init process */
+    NULL,                                  /* init thread */
+    NULL,                                  /* exit thread */
+    NULL,                                  /* exit process */
+    NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
 
+// Configuration directive handler: sets the new server name
 static char *
 ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t *args;
-    
     ngx_http_server_redirect_conf_t *srcf = conf;
-    ngx_http_core_loc_conf_t  *clcf;
-    
-    clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-    clcf->handler = ngx_http_server_redirect_handler;
 
     args = cf->args->elts;
     srcf->new_server = args[1];
@@ -78,6 +73,45 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 
+static void *
+ngx_http_server_redirect_create_conf(ngx_conf_t *cf)
+{
+    ngx_http_server_redirect_conf_t *conf;
+
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_server_redirect_conf_t));
+    if (conf == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    conf->new_server.data = NULL;
+    conf->new_server.len = 0;
+
+    return conf;
+}
+
+
+static ngx_int_t
+ngx_http_server_redirect_post_config(ngx_conf_t *cf)
+{
+    ngx_http_core_main_conf_t  *cmcf;
+    ngx_http_handler_pt        *h;
+
+    // Retrieve the core module's main configuration
+    cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
+
+    // Add the handler to the POST_READ phase
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_POST_READ_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+
+    *h = ngx_http_server_redirect_handler;
+
+    return NGX_OK;
+}
+
+
+// Function to find the virtual server
 static ngx_int_t
 ngx_http_server_redirect_find_virtual_server(ngx_http_request_t *r,
     u_char *host, size_t len)
@@ -149,32 +183,7 @@ found:
 }
 
 
-void ngx_http_server_redirect_request_handler(ngx_event_t *ev)
-{
-    ngx_connection_t    *c;
-    ngx_http_request_t  *r;
-    ngx_http_log_ctx_t  *ctx;
-
-    c = ev->data;
-    r = c->data;
-
-    ctx = c->log->data;
-    ctx->current_request = r;
-
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                   "http run request: \"%V?%V\"", &r->uri, &r->args);
-
-    if (ev->write) {
-        r->write_event_handler(r);
-
-    } else {
-        r->read_event_handler(r);
-    }
-
-    ngx_http_run_posted_requests(c);
-}
-
-
+// Callback function to handle the request
 static ngx_int_t
 ngx_http_server_redirect_handler(ngx_http_request_t *r)
 {
@@ -182,9 +191,11 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
     ngx_str_t *server;
     ngx_http_server_redirect_conf_t *srcf;
 
+    // Retrieve the server-level configuration
     srcf = ngx_http_get_module_srv_conf(r, ngx_http_server_redirect_module);
     server = &srcf->new_server;
     
+    // Find the virtual server
     res = ngx_http_server_redirect_find_virtual_server(r,
         server->data, server->len);
 
@@ -219,18 +230,28 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
 }
 
 
-static void *
-ngx_http_server_redirect_create_conf(ngx_conf_t *cf)
+// Callback function to handle connection events
+void ngx_http_server_redirect_request_handler(ngx_event_t *ev)
 {
-    ngx_http_server_redirect_conf_t *conf;
+    ngx_connection_t    *c;
+    ngx_http_request_t  *r;
+    ngx_http_log_ctx_t  *ctx;
 
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_server_redirect_conf_t));
-    if (conf == NULL) {
-        return NGX_CONF_ERROR;
+    c = ev->data;
+    r = c->data;
+
+    ctx = c->log->data;
+    ctx->current_request = r;
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "http run request: \"%V?%V\"", &r->uri, &r->args);
+
+    if (ev->write) {
+        r->write_event_handler(r);
+
+    } else {
+        r->read_event_handler(r);
     }
 
-    conf->new_server.data = NULL;
-    conf->new_server.len = 0;
-
-    return conf;
+    ngx_http_run_posted_requests(c);
 }
