@@ -19,7 +19,7 @@ typedef struct {
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
     { ngx_string("server_redirect"),
-      NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
       ngx_http_server_redirect,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
@@ -182,7 +182,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
     ngx_str_t *server;
     ngx_http_server_redirect_conf_t *srcf;
 
-    srcf = ngx_http_get_module_loc_conf(r, ngx_http_server_redirect_module);
+    srcf = ngx_http_get_module_srv_conf(r, ngx_http_server_redirect_module);
     server = &srcf->new_server;
     
     res = ngx_http_server_redirect_find_virtual_server(r,
