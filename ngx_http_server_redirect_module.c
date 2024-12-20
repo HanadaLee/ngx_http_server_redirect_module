@@ -130,12 +130,12 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
 
     if (ngx_http_set_virtual_server(r, server) == NGX_ERROR) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "failed to redirect to new virtual server");
+                      "failed to redirect server");
         return NGX_ERROR;
     }
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                  "Virtual server set to %V", server);
+                  "redirect to new server: %V", server);
 
     return NGX_DECLINED;
 }
