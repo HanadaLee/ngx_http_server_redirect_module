@@ -169,7 +169,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
 {
     ngx_http_server_redirect_conf_t  *srcf;
     ngx_http_server_redirect_rule_t  *rules;
-    ngx_str_t                        *server;
+    ngx_str_t                        *server = NULL;
     ngx_uint_t                        i;
 
     srcf = ngx_http_get_module_srv_conf(r, ngx_http_server_redirect_module);
