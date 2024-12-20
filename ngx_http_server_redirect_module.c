@@ -117,7 +117,6 @@ ngx_http_server_redirect_post_config(ngx_conf_t *cf)
 static ngx_int_t
 ngx_http_server_redirect_handler(ngx_http_request_t *r)
 {
-    ngx_int_t     res;
     ngx_str_t    *server;
 
     ngx_http_server_redirect_conf_t *srcf;
