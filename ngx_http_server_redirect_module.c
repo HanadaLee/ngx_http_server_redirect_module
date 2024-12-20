@@ -17,6 +17,8 @@ typedef struct {
 static void * ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
 static char * ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_server_redirect_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_server_redirect_virtual_server(ngx_http_request_t *r,
+    ngx_str_t *host);
 static ngx_int_t ngx_http_server_redirect_post_config(ngx_conf_t *cf);
 
 
@@ -216,7 +218,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         return NGX_DECLINED;
     }
 
-    if (ngx_http_set_virtual_server(r, server) == NGX_ERROR) {
+    if (ngx_http_server_redirect_virtual_server(r, server) == NGX_ERROR) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server_redirect: failed to redirect server");
         return NGX_ERROR;
@@ -234,4 +236,44 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
                   "server_redirect: redirect to new server %V", server);
 
     return NGX_DECLINED;
+}
+
+
+static ngx_int_t
+ngx_http_server_redirect_virtual_server(ngx_http_request_t *r,
+    ngx_str_t *host)
+{
+    ngx_int_t                  rc;
+    ngx_http_connection_t     *hc;
+    ngx_http_core_loc_conf_t  *clcf;
+    ngx_http_core_srv_conf_t  *cscf;
+
+#if (NGX_SUPPRESS_WARN)
+    cscf = NULL;
+#endif
+
+    hc = r->http_connection;
+
+    rc = ngx_http_find_virtual_server(r->connection,
+                                      hc->addr_conf->virtual_names,
+                                      host, r, &cscf);
+
+    if (rc == NGX_ERROR) {
+        ngx_http_close_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return NGX_ERROR;
+    }
+
+    if (rc == NGX_DECLINED) {
+        cscf = hc->addr_conf->default_server;
+        return NGX_OK;
+    }
+
+    r->srv_conf = cscf->ctx->srv_conf;
+    r->loc_conf = cscf->ctx->loc_conf;
+
+    clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+
+    ngx_set_connection_log(r->connection, clcf->error_log);
+
+    return NGX_OK;
 }
