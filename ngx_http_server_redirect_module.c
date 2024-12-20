@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) Hanada
+ */
+
+
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -9,6 +14,7 @@ typedef struct {
     ngx_int_t                  negative;
 } ngx_http_server_redirect_rule_t;
 
+
 typedef struct {
     ngx_array_t               *rules;
 } ngx_http_server_redirect_conf_t;
@@ -17,8 +23,11 @@ typedef struct {
 static void * ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
 static char * ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_server_redirect_handler(ngx_http_request_t *r);
-static ngx_int_t ngx_http_server_redirect_virtual_server(ngx_http_request_t *r,
-    ngx_str_t *host);
+static ngx_int_t ngx_http_server_redirect_set_virtual_server(
+    ngx_http_request_t *r, ngx_str_t *host);
+static ngx_int_t ngx_http_server_redirect_find_virtual_server(
+    ngx_connection_t *c, ngx_http_virtual_names_t *virtual_names,
+    ngx_str_t *host, ngx_http_request_t *r, ngx_http_core_srv_conf_t **cscfp);
 static ngx_int_t ngx_http_server_redirect_post_config(ngx_conf_t *cf);
 
 
@@ -218,7 +227,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         return NGX_DECLINED;
     }
 
-    if (ngx_http_server_redirect_virtual_server(r, server) == NGX_ERROR) {
+    if (ngx_http_server_redirect_set_virtual_server(r, server) == NGX_ERROR) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server_redirect: failed to redirect server");
         return NGX_ERROR;
@@ -240,7 +249,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
 
 
 static ngx_int_t
-ngx_http_server_redirect_virtual_server(ngx_http_request_t *r,
+ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     ngx_str_t *host)
 {
     ngx_int_t                  rc;
@@ -254,7 +263,7 @@ ngx_http_server_redirect_virtual_server(ngx_http_request_t *r,
 
     hc = r->http_connection;
 
-    rc = ngx_http_find_virtual_server(r->connection,
+    rc = ngx_http_server_redirect_find_virtual_server(r->connection,
                                       hc->addr_conf->virtual_names,
                                       host, r, &cscf);
 
@@ -276,4 +285,56 @@ ngx_http_server_redirect_virtual_server(ngx_http_request_t *r,
     ngx_set_connection_log(r->connection, clcf->error_log);
 
     return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_server_redirect_find_virtual_server(ngx_connection_t *c,
+    ngx_http_virtual_names_t *virtual_names, ngx_str_t *host,
+    ngx_http_request_t *r, ngx_http_core_srv_conf_t **cscfp)
+{
+    ngx_http_core_srv_conf_t  *cscf;
+
+    if (virtual_names == NULL) {
+        return NGX_DECLINED;
+    }
+
+    cscf = ngx_hash_find_combined(&virtual_names->names,
+                                  ngx_hash_key(host->data, host->len),
+                                  host->data, host->len);
+
+    if (cscf) {
+        *cscfp = cscf;
+        return NGX_OK;
+    }
+
+#if (NGX_PCRE)
+
+    if (host->len && virtual_names->nregex) {
+        ngx_int_t                n;
+        ngx_uint_t               i;
+        ngx_http_server_name_t  *sn;
+
+        sn = virtual_names->regex;
+
+        for (i = 0; i < virtual_names->nregex; i++) {
+
+            n = ngx_http_regex_exec(r, sn[i].regex, host);
+
+            if (n == NGX_DECLINED) {
+                continue;
+            }
+
+            if (n == NGX_OK) {
+                *cscfp = sn[i].server;
+                return NGX_OK;
+            }
+
+            return NGX_ERROR;
+        }
+    }
+
+#endif /* NGX_PCRE */
+
+    return NGX_DECLINED;
 }
