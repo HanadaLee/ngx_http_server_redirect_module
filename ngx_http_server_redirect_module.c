@@ -222,9 +222,14 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    r->headers_in.server = server;
+    if (r->headers_in.server.len) {
+        r->headers_in.server.len = server->len;
+        r->headers_in.server.data = server->data;
+    }
+
     if (r->headers_in.host) {
-        r->headers_in.host = server;
+        r->headers_in.host->value.len = server->len;
+        r->headers_in.host->value.data = server->data;
     }
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
