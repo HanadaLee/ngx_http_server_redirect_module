@@ -65,7 +65,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_str_t *value;
     ngx_http_server_redirect_conf_t *srcf = conf;
 
-    args = cf->args->elts;
+    value = cf->args->elts;
     srcf->new_server = value[1];
     
     return NGX_CONF_OK;
