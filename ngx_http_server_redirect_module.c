@@ -20,6 +20,15 @@ typedef struct {
 } ngx_http_server_redirect_conf_t;
 
 
+typedef struct {
+    ngx_str_t                  original_host;
+    ngx_str_t                  redirect_count;
+} ngx_http_server_redirect_ctx_t;
+
+
+static ngx_int_t ngx_http_server_redirect_add_variables(ngx_conf_t *cf);
+static ngx_int_t ngx_http_server_redirect_original_host_variable(
+    ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 static void * ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
 static char * ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_server_redirect_handler(ngx_http_request_t *r);
@@ -45,7 +54,7 @@ static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
 
 static ngx_http_module_t  ngx_http_server_redirect_module_ctx = {
-    NULL,                                   /* preconfiguration */
+    ngx_http_server_redirect_add_variables, /* preconfiguration */
     ngx_http_server_redirect_post_config,   /* postconfiguration */
 
     NULL,                                   /* create main configuration */
@@ -73,6 +82,57 @@ ngx_module_t  ngx_http_server_redirect_module = {
     NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
+
+static ngx_http_variable_t  ngx_http_server_redirect_vars[] = {
+
+    { ngx_string("server_redirect_original_host"), NULL,
+      ngx_http_server_redirect_original_host_variable, 0,
+      NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    ngx_http_null_variable
+};
+
+
+static ngx_int_t
+ngx_http_server_redirect_add_variables(ngx_conf_t *cf)
+{
+    ngx_http_variable_t  *var, *v;
+
+    for (v = ngx_http_server_redirect_vars; v->name.len; v++) {
+        var = ngx_http_add_variable(cf, &v->name, v->flags);
+        if (var == NULL) {
+            return NGX_ERROR;
+        }
+
+        var->get_handler = v->get_handler;
+        var->data = v->data;
+    }
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_server_redirect_original_host_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+    ngx_http_server_redirect_ctx_t *ctx;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
+    if (ctx == NULL || ctx->original_host.len == 0) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->len = ctx->original_host.len;
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    v->data = ctx->original_host.data;
+
+    return NGX_OK;
+}
 
 
 static char *
@@ -220,18 +280,38 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         return NGX_DECLINED;
     }
 
+    ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
+
+    if (ctx == NULL) {
+        ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_server_redirect_ctx_t));
+        if (ctx == NULL) {
+            return NGX_ERROR;
+        }
+
+        ngx_http_set_ctx(r, ctx, ngx_http_server_redirect_module);
+    }
+
+    if (ctx->redirect_count >= 3) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "server redirect: too many redirects");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
     if (ngx_http_validate_host(server, r->pool, 0) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "server_redirect: ignore server redirect "
+                      "server redirect: ignore server redirect "
                       "due to validate host failure");
         return NGX_DECLINED;
     }
 
     if (ngx_http_server_redirect_set_virtual_server(r, server) == NGX_ERROR) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "server_redirect: failed to redirect server");
+                      "server redirect: failed to redirect server");
         return NGX_ERROR;
     }
+
+    ctx->original_server = r->headers_in.server;
+    ctx->redirect_count++;
 
     if (r->headers_in.server.len) {
         r->headers_in.server = *server;
@@ -242,7 +322,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
     }
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                  "server_redirect: redirect to new server %V", server);
+                  "server redirect: redirect to new server with host %V", server);
 
     return NGX_DECLINED;
 }
