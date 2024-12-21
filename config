@@ -32,12 +32,12 @@ if [ "$ngx_module_link" != DYNAMIC ]; then
     # so we must re-order filters here.
 
     if [ $HTTP_REALIP = YES ]; then
-        next=ngx_http_realip_module
+        last=ngx_http_realip_module
     else
-        next=ngx_http_write_filter_module
+        last=ngx_http_write_filter_module
     fi
 
     HTTP_MODULES=`echo $HTTP_MODULES \
                   | sed "s/$ngx_addon_name//" \
-                  | sed "s/$next/$next $ngx_addon_name/"`
+                  | sed "s/$last/$ngx_addon_name $last/"`
 fi
