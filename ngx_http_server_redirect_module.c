@@ -274,7 +274,6 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
 
     if (rc == NGX_DECLINED) {
         cscf = hc->addr_conf->default_server;
-        return NGX_OK;
     }
 
     r->srv_conf = cscf->ctx->srv_conf;
