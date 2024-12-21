@@ -22,7 +22,7 @@ typedef struct {
 
 typedef struct {
     ngx_str_t                  original_host;
-    ngx_str_t                  redirect_count;
+    ngx_uint_t                 redirect_count;
 } ngx_http_server_redirect_ctx_t;
 
 
@@ -311,7 +311,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    ctx->original_server = r->headers_in.server;
+    ctx->original_host = r->headers_in.server;
     ctx->redirect_count++;
 
     if (r->headers_in.server.len) {
