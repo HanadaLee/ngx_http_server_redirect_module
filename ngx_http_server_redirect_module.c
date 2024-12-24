@@ -225,6 +225,8 @@ ngx_http_server_redirect_create_conf(ngx_conf_t *cf)
         return NULL;
     }
 
+    conf->schedule_redirect = 0;
+
     return conf;
 }
 
