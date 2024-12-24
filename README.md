@@ -12,6 +12,7 @@
     - [Conditional Redirection](#conditional-redirection)
   - [Configuration](#configuration)
     - [Directive: `server_redirect`](#directive-server_redirect)
+    - [Directive: `schedule_redirect`](#directive-schedule_redirect)
     - [Variable: `$server_redirect_original_host`](#variable-server_redirect_original_host)
   - [Author](#author)
   - [License](#license)
@@ -113,7 +114,7 @@ Redirect the current request to another server. The target server must have the 
 
 The target host should be a specific host name just like the host in the request header. Even if the target server you want to redirect to is a wildcard domain name or a regular expression.
 
-If the target server cannot be found, it will jump to the default server.
+If the target server cannot be found, it will be redirected to the default server.
 
 The if parameter enables conditional redirection. A request will not be redirected if the condition evaluates to “0” or an empty string. In addition, you can also use the form of `if!=` to make negative judgments.
 
@@ -124,6 +125,22 @@ server_redirect newserver.com if=$http_server_redirect;
 ```
 
 This example redirects requests to `newserver.com` if the `Server-Redirect` header has value and value is not 0.
+
+### Directive: `schedule_redirect`
+
+**Syntax:** *schedule_redirect on | off*
+
+**Default:** *schedule_redirect off*
+
+**Context:** *server*
+
+Redirect the current request to another server from the first request path.
+
+If enabled, when accessing http://a.com/b.com/, the request will be redirected to http://b.com/. If the target server cannot be found, it will be redirected to the default server.
+
+When server_redirect directive exists and meets the redirection conditions, server_redirect will be executed first.
+
+If the request path does not have the first directory (such as the home page), no redirection will be made.
 
 ### Variable: `$server_redirect_original_host`
 
