@@ -371,7 +371,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
         return NGX_DECLINED;
     }
 
-    p = ngx_strchr(r->uri.data + 1, '/');
+    p = (u_char *) ngx_strchr(r->uri.data + 1, '/');
 
     if (p == NULL) {
         return NGX_DECLINED;
@@ -430,7 +430,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
 
     /* perform the same processing again for r->unparsed_uri */
 
-    p = ngx_strchr(r->unparsed_uri.data + 1, '/');
+    p = (u_char *) ngx_strchr(r->unparsed_uri.data + 1, '/');
 
     if (p == NULL) {
         return NGX_DECLINED;
