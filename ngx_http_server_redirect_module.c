@@ -261,7 +261,7 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         return NGX_DECLINED;
     }
 
-    if (srcf->schedule_redirect) {
+    if (srcf->schedule_redirect == 1) {
         return ngx_http_server_redirect_handle_schedule_redirect(r);
     }
 
