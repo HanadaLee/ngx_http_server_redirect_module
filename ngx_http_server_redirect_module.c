@@ -18,6 +18,7 @@ typedef struct {
 
 typedef struct {
     ngx_array_t               *rules;
+    ngx_flag_t                 schedule_redirect;
 } ngx_http_server_redirect_conf_t;
 
 
@@ -33,6 +34,10 @@ static ngx_int_t ngx_http_server_redirect_original_host_variable(
 static void * ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
 static char * ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_server_redirect_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_server_redirect_handle_server_redirect(
+    ngx_http_request_t *r, ngx_http_server_redirect_conf_t *srcf);
+static ngx_int_t ngx_http_server_redirect_handle_schedule_redirect(
+    ngx_http_request_t *r);
 static ngx_int_t ngx_http_server_redirect_set_virtual_server(
     ngx_http_request_t *r, ngx_str_t *host);
 static ngx_int_t ngx_http_server_redirect_find_virtual_server(
@@ -48,6 +53,13 @@ static ngx_command_t  ngx_http_server_redirect_commands[] = {
       ngx_http_server_redirect,
       NGX_HTTP_SRV_CONF_OFFSET,
       0,
+      NULL },
+
+    { ngx_string("schedule_redirect"),
+      NGX_HTTP_SRV_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_SRV_CONF_OFFSET,
+      offsetof(ngx_http_server_redirect_conf_t, schedule_redirect),
       NULL },
 
     ngx_null_command
@@ -240,12 +252,29 @@ static ngx_int_t
 ngx_http_server_redirect_handler(ngx_http_request_t *r)
 {
     ngx_http_server_redirect_conf_t  *srcf;
+
+    srcf = ngx_http_get_module_srv_conf(r, ngx_http_server_redirect_module);
+
+    if (ngx_http_server_redirect_handle_server_redirect(r, srcf) == NGX_OK) {
+        return NGX_DECLINED;
+    }
+
+    if (srcf->schedule_redirect) {
+        return ngx_http_server_redirect_handle_schedule_redirect(r);
+    }
+
+    return NGX_DECLINED;
+}
+
+
+static ngx_int_t
+ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
+    ngx_http_server_redirect_conf_t *srcf)
+{
     ngx_http_server_redirect_rule_t  *rules;
     ngx_str_t                        *server = NULL;
     ngx_uint_t                        i;
     ngx_http_server_redirect_ctx_t   *ctx;
-
-    srcf = ngx_http_get_module_srv_conf(r, ngx_http_server_redirect_module);
 
     if (srcf->rules == NULL || srcf->rules->nelts == 0) {
         return NGX_DECLINED;
@@ -282,6 +311,13 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         return NGX_DECLINED;
     }
 
+    if (ngx_http_validate_host(server, r->pool, 0) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "server redirect: ignore server redirect "
+                      "due to validate host failure");
+        return NGX_DECLINED;
+    }
+
     ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
 
     if (ctx == NULL) {
@@ -297,13 +333,6 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server redirect: too many redirects");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    if (ngx_http_validate_host(server, r->pool, 0) != NGX_OK) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "server redirect: ignore server redirect "
-                      "due to validate host failure");
-        return NGX_DECLINED;
     }
 
     if (ngx_http_server_redirect_set_virtual_server(r, server) == NGX_ERROR) {
@@ -325,6 +354,102 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "server redirect: redirect to new server with host %V", server);
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
+{
+    ngx_http_server_redirect_ctx_t   *ctx;
+    size_t                            host_len;
+    ngx_str_t                         new_host, new_uri, new_unparsed_uri;
+    u_char                           *p;
+
+    if (r->uri.len <= 2) {
+        return NGX_DECLINED;
+    }
+
+    p = ngx_strchr(r->uri.data + 1, '/');
+
+    if (p == NULL) {
+        return NGX_DECLINED;
+    }
+
+    host_len = p - (r->uri.data + 1);
+    if (host_len == 0) {
+        return NGX_DECLINED;
+    }
+
+    new_host.len = host_len;
+    new_host.data = r->uri.data + 1;
+
+    if (ngx_http_validate_host(&new_host, r->pool, 0) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "schedule redirect: invalid host %V", &new_host);
+        return NGX_DECLINED;
+    }
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
+    if (ctx == NULL) {
+        ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_server_redirect_ctx_t));
+        if (ctx == NULL) {
+            return NGX_ERROR;
+        }
+        ngx_http_set_ctx(r, ctx, ngx_http_server_redirect_module);
+    }
+
+    if (ctx->redirect_count >= 3) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "schedule redirect: too many redirects");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    if (ngx_http_server_redirect_set_virtual_server(r, &new_host) == NGX_ERROR) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "schedule redirect: failed to redirect server");
+        return NGX_ERROR;
+    }
+
+    ctx->original_host = r->headers_in.host->value;
+    ctx->redirect_count++;
+
+    if (r->headers_in.server.len) {
+        r->headers_in.server = new_host;
+    }
+
+    if (r->headers_in.host) {
+        r->headers_in.host->value = new_host;
+    }
+
+    new_uri.len = r->uri.len - 1 - host_len;
+    new_uri.data = p;
+
+    r->uri = new_uri;
+
+    /* perform the same processing again for r->unparsed_uri */
+
+    p = ngx_strchr(r->unparsed_uri.data + 1, '/');
+
+    if (p == NULL) {
+        return NGX_DECLINED;
+    }
+
+    host_len = p - (r->unparsed_uri.data + 1);
+
+    if (host_len == 0) {
+        return NGX_DECLINED;
+    }
+
+    new_unparsed_uri.len = r->unparsed_uri.len - 1 - host_len;
+    new_unparsed_uri.data = p;
+
+    r->unparsed_uri = new_unparsed_uri;
+
+    ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                  "schedule redirect: redirect to new server with "
+                  "host %V and uri %V", &new_host, &new_uri);
 
     return NGX_DECLINED;
 }
