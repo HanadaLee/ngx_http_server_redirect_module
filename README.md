@@ -28,7 +28,7 @@ This Nginx module is currently considered experimental. Issues and PRs are welco
 
 ## Installation
 
-To use theses modules, configure your nginx branch with --add-module=/path/to/ngx_http_access_control_module.
+To use theses modules, configure your nginx branch with --add-module=/path/to/ngx_http_server_redirect_module.
 
 ## Synopsis
 
@@ -100,6 +100,38 @@ http {
 }
 ```
 
+### Schedule Redirection
+
+Redirect the current request to another server from the first request path.
+If request `http://example.com/newserver.com/test?arg=1`, it will be redirect to `http:///newserver.com/test?arg=1`. This process is internal and no 302 redirection will occur.
+```nginx
+http {
+    server {
+        listen 80;
+        server_name example.com;
+
+        # Enable schedule redirection.
+        schedule_redirect on;
+
+        # Requests will not arrive here unless the first path in the request path does not exist or the host in the first path is invalid.
+        return 400 "request path invalid";
+    }
+
+    server {
+        listen 80;
+        server_name newserver.com;
+
+        # Only the server rewrite phase and subsequent instructions will take effect in the new server.
+        add_header x-original-host $server_redirect_original_host;
+
+        location / {
+            proxy_pass http://upstream.com;
+        }
+    }
+}
+```
+
+
 ## Configuration
 
 ### Directive: `server_redirect`
@@ -140,7 +172,9 @@ If enabled, when accessing http://a.com/b.com/, the request will be redirected t
 
 When server_redirect directive exists and meets the redirection conditions, server_redirect will be executed first.
 
-If the request path does not have the first directory (such as the home page), no redirection will be made.
+If the request path does not have the first path (such as the home page), no redirection will be made.
+
+After redirection, even $request_uri will be cleared of the first path. You can only find the original request path in the request line variable $request.
 
 ### Variable: `$server_redirect_original_host`
 
