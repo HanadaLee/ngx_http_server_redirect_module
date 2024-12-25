@@ -52,6 +52,9 @@ http {
         listen 80;
         server_name newserver.com;
 
+        # You can get original host from this variable.
+        add_header x-original-host $server_redirect_original_host;
+
         location / {
             proxy_pass http://upstream.com;
         }
@@ -90,7 +93,7 @@ http {
         listen 80;
         server_name newserver.com;
 
-        # Only the server rewrite phase and subsequent instructions will take effect in the new server.
+        # You can get original host from this variable.
         add_header x-original-host $server_redirect_original_host;
 
         location / {
@@ -121,7 +124,7 @@ http {
         listen 80;
         server_name newserver.com;
 
-        # Only the server rewrite phase and subsequent instructions will take effect in the new server.
+        # You can get original host from this variable.
         add_header x-original-host $server_redirect_original_host;
 
         location / {
