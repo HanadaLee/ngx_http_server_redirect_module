@@ -43,7 +43,7 @@ static ngx_int_t ngx_http_server_redirect_set_virtual_server(
 static ngx_int_t ngx_http_server_redirect_find_virtual_server(
     ngx_connection_t *c, ngx_http_virtual_names_t *virtual_names,
     ngx_str_t *host, ngx_http_request_t *r, ngx_http_core_srv_conf_t **cscfp);
-static ngx_int_t ngx_http_server_redirect_post_config(ngx_conf_t *cf);
+static ngx_int_t ngx_http_server_redirect_init(ngx_conf_t *cf);
 
 
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
@@ -68,7 +68,7 @@ static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
 static ngx_http_module_t  ngx_http_server_redirect_module_ctx = {
     ngx_http_server_redirect_add_variables, /* preconfiguration */
-    ngx_http_server_redirect_post_config,   /* postconfiguration */
+    ngx_http_server_redirect_init,          /* postconfiguration */
 
     NULL,                                   /* create main configuration */
     NULL,                                   /* init main configuration */
@@ -232,7 +232,7 @@ ngx_http_server_redirect_create_conf(ngx_conf_t *cf)
 
 
 static ngx_int_t
-ngx_http_server_redirect_post_config(ngx_conf_t *cf)
+ngx_http_server_redirect_init(ngx_conf_t *cf)
 {
     ngx_http_core_main_conf_t  *cmcf;
     ngx_http_handler_pt        *h;
@@ -257,12 +257,16 @@ ngx_http_server_redirect_handler(ngx_http_request_t *r)
 
     srcf = ngx_http_get_module_srv_conf(r, ngx_http_server_redirect_module);
 
-    if (ngx_http_server_redirect_handle_server_redirect(r, srcf) == NGX_OK) {
-        return NGX_DECLINED;
+    if (srcf->rules
+        && ngx_http_server_redirect_handle_server_redirect(r, srcf) == NGX_OK)
+    {
+        return ngx_http_server_redirect_handler(r);
     }
 
-    if (srcf->schedule_redirect == 1) {
-        return ngx_http_server_redirect_handle_schedule_redirect(r);
+    if (srcf->schedule_redirect == 1
+        && ngx_http_server_redirect_handle_schedule_redirect(r) == NGX_OK)
+    {
+        return ngx_http_server_redirect_handler(r);
     }
 
     return NGX_DECLINED;
@@ -331,7 +335,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
         ngx_http_set_ctx(r, ctx, ngx_http_server_redirect_module);
     }
 
-    if (ctx->redirect_count >= 3) {
+    if (ctx->redirect_count > 3) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server redirect: too many redirects");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -394,6 +398,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
     }
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
+
     if (ctx == NULL) {
         ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_server_redirect_ctx_t));
         if (ctx == NULL) {
@@ -402,7 +407,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
         ngx_http_set_ctx(r, ctx, ngx_http_server_redirect_module);
     }
 
-    if (ctx->redirect_count >= 3) {
+    if (ctx->redirect_count > 3) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "schedule redirect: too many redirects");
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -453,7 +458,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
                   "schedule redirect: redirect to new server with "
                   "host %V and uri %V", &new_host, &new_uri);
 
-    return NGX_DECLINED;
+    return NGX_OK;
 }
 
 
