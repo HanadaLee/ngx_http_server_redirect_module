@@ -338,7 +338,8 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     if (ctx->redirect_count > 3) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server redirect: too many redirects");
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return NGX_DONE;
     }
 
     if (ngx_http_server_redirect_set_virtual_server(r, server) == NGX_ERROR) {
@@ -410,7 +411,8 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
     if (ctx->redirect_count > 3) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "schedule redirect: too many redirects");
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return NGX_DONE;
     }
 
     if (ngx_http_server_redirect_set_virtual_server(r, &new_host) == NGX_ERROR) {
