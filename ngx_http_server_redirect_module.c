@@ -117,7 +117,7 @@ ngx_http_server_redirect_add_variables(ngx_conf_t *cf)
     var->get_handler = ngx_http_server_redirect_original_host_variable;
     var->data = 0;
 
-    ngx_http_server_redirect_original_host_index = v->index;
+    ngx_http_server_redirect_original_host_index = var->index;
 
     return NGX_OK;
 }
