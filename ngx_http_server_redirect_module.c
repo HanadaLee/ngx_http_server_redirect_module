@@ -46,7 +46,9 @@ static ngx_int_t ngx_http_server_redirect_init(ngx_conf_t *cf);
 
 
 static ngx_int_t  ngx_http_server_redirect_original_host_index
-                                                        = NGX_CONF_UNSET;
+                    = NGX_CONF_UNSET;
+static ngx_str_t  ngx_http_server_redirect_original_host
+                    = ngx_string("server_redirect_original_host");
 
 
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
@@ -103,19 +105,19 @@ ngx_module_t  ngx_http_server_redirect_module = {
 static ngx_int_t
 ngx_http_server_redirect_add_variables(ngx_conf_t *cf)
 {
-    ngx_http_variable_t  *v;
+    ngx_http_variable_t *var;
 
-    v = ngx_http_add_variable(cf, &ngx_string("server_redirect_original_host"),
-                                NGX_HTTP_VAR_CHANGEABLE);
-    if (v == NULL) {
+    var = ngx_http_add_variable(cf, ngx_http_server_redirect_original_host,
+                              NGX_HTTP_VAR_CHANGEABLE);
+
+    if (var == NULL) {
         return NGX_ERROR;
     }
 
-    v->get_handler = ngx_http_server_redirect_original_host_variable;
-    v->data = 0;
+    var->get_handler = ngx_http_server_redirect_original_host_variable;
+    var->data = 0;
 
     ngx_http_server_redirect_original_host_index = v->index;
-
 
     return NGX_OK;
 }
@@ -267,7 +269,6 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     ngx_str_t                        *server = NULL;
     ngx_uint_t                        i;
     ngx_http_server_redirect_ctx_t   *ctx;
-    ngx_http_variable_value_t        *vv;
 
     if (srcf->rules == NULL || srcf->rules->nelts == 0) {
         return NGX_DECLINED;
