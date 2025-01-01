@@ -45,11 +45,9 @@ static ngx_int_t ngx_http_server_redirect_find_virtual_server(
 static ngx_int_t ngx_http_server_redirect_init(ngx_conf_t *cf);
 
 
-static ngx_int_t  ngx_http_server_redirect_original_host_index
-                    = NGX_CONF_UNSET;
 static ngx_str_t  ngx_http_server_redirect_original_host
                     = ngx_string("server_redirect_original_host");
-
+static ngx_uint_t  ngx_http_server_redirect_original_host_index;
 
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
@@ -105,19 +103,25 @@ ngx_module_t  ngx_http_server_redirect_module = {
 static ngx_int_t
 ngx_http_server_redirect_add_variables(ngx_conf_t *cf)
 {
-    ngx_http_variable_t *var;
+    ngx_int_t             n;
+    ngx_http_variable_t  *var;
 
     var = ngx_http_add_variable(cf, &ngx_http_server_redirect_original_host,
-                              NGX_HTTP_VAR_CHANGEABLE);
+            NGX_HTTP_VAR_CHANGEABLE);
 
     if (var == NULL) {
         return NGX_ERROR;
     }
 
     var->get_handler = ngx_http_server_redirect_original_host_variable;
-    var->data = 0;
 
-    ngx_http_server_redirect_original_host_index = var->index;
+    n = ngx_http_get_variable_index(cf,
+            &ngx_http_server_redirect_original_host);
+    if (n == NGX_ERROR) {
+        return NGX_ERROR;
+    }
+
+    ngx_http_server_redirect_original_host_index = n;
 
     return NGX_OK;
 }
@@ -127,10 +131,7 @@ static ngx_int_t
 ngx_http_server_redirect_original_host_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "server redirect original host variable");
-
-    v->not_found = 1;
+    *v = ngx_http_variable_null_value;
 
     return NGX_OK;
 }
