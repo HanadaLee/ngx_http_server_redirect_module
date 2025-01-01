@@ -481,11 +481,11 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     }
 
     if (r->headers_in.server.len) {
-        r->headers_in.server = host;
+        r->headers_in.server = *host;
     }
 
     if (r->headers_in.host) {
-        r->headers_in.host->value = host;
+        r->headers_in.host->value = *host;
     }
 
     return NGX_OK;
