@@ -23,7 +23,6 @@ typedef struct {
 
 
 typedef struct {
-    ngx_str_t                  original_host;
     ngx_uint_t                 redirect_count;
 } ngx_http_server_redirect_ctx_t;
 
@@ -44,6 +43,10 @@ static ngx_int_t ngx_http_server_redirect_find_virtual_server(
     ngx_connection_t *c, ngx_http_virtual_names_t *virtual_names,
     ngx_str_t *host, ngx_http_request_t *r, ngx_http_core_srv_conf_t **cscfp);
 static ngx_int_t ngx_http_server_redirect_init(ngx_conf_t *cf);
+
+
+static ngx_int_t  ngx_http_server_redirect_original_host_index
+                                                        = NGX_CONF_UNSET;
 
 
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
@@ -97,30 +100,22 @@ ngx_module_t  ngx_http_server_redirect_module = {
 };
 
 
-static ngx_http_variable_t  ngx_http_server_redirect_vars[] = {
-
-    { ngx_string("server_redirect_original_host"), NULL,
-      ngx_http_server_redirect_original_host_variable, 0,
-      NGX_HTTP_VAR_NOCACHEABLE, 0 },
-
-    ngx_http_null_variable
-};
-
-
 static ngx_int_t
 ngx_http_server_redirect_add_variables(ngx_conf_t *cf)
 {
-    ngx_http_variable_t  *var, *v;
+    ngx_http_variable_t  *v;
 
-    for (v = ngx_http_server_redirect_vars; v->name.len; v++) {
-        var = ngx_http_add_variable(cf, &v->name, v->flags);
-        if (var == NULL) {
-            return NGX_ERROR;
-        }
-
-        var->get_handler = v->get_handler;
-        var->data = v->data;
+    v = ngx_http_add_variable(cf, &ngx_string("server_redirect_original_host"),
+                                NGX_HTTP_VAR_CHANGEABLE);
+    if (v == NULL) {
+        return NGX_ERROR;
     }
+
+    v->get_handler = ngx_http_server_redirect_original_host_variable;
+    v->data = 0;
+
+    ngx_http_server_redirect_original_host_index = v->index;
+
 
     return NGX_OK;
 }
@@ -130,19 +125,10 @@ static ngx_int_t
 ngx_http_server_redirect_original_host_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_server_redirect_ctx_t *ctx;
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "server redirect original host variable");
 
-    ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
-    if (ctx == NULL || ctx->original_host.len == 0) {
-        v->not_found = 1;
-        return NGX_OK;
-    }
-
-    v->len = ctx->original_host.len;
-    v->valid = 1;
-    v->no_cacheable = 0;
-    v->not_found = 0;
-    v->data = ctx->original_host.data;
+    v->not_found = 1;
 
     return NGX_OK;
 }
@@ -281,6 +267,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     ngx_str_t                        *server = NULL;
     ngx_uint_t                        i;
     ngx_http_server_redirect_ctx_t   *ctx;
+    ngx_http_variable_value_t        *vv;
 
     if (srcf->rules == NULL || srcf->rules->nelts == 0) {
         return NGX_DECLINED;
@@ -348,16 +335,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
         return NGX_ERROR;
     }
 
-    ctx->original_host = r->headers_in.server;
     ctx->redirect_count++;
-
-    if (r->headers_in.server.len) {
-        r->headers_in.server = *server;
-    }
-
-    if (r->headers_in.host) {
-        r->headers_in.host->value = *server;
-    }
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "server redirect: redirect to new server with host %V", server);
@@ -421,16 +399,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    ctx->original_host = r->headers_in.host->value;
     ctx->redirect_count++;
-
-    if (r->headers_in.server.len) {
-        r->headers_in.server = new_host;
-    }
-
-    if (r->headers_in.host) {
-        r->headers_in.host->value = new_host;
-    }
 
     new_uri.len = r->uri.len - 1 - host_len;
     new_uri.data = p;
@@ -472,6 +441,7 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     ngx_http_connection_t     *hc;
     ngx_http_core_loc_conf_t  *clcf;
     ngx_http_core_srv_conf_t  *cscf;
+    ngx_http_variable_value_t *vv;
 
 #if (NGX_SUPPRESS_WARN)
     cscf = NULL;
@@ -498,6 +468,25 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
     ngx_set_connection_log(r->connection, clcf->error_log);
+
+    vv = ngx_http_get_indexed_variable(r,
+        ngx_http_server_redirect_original_host_index);
+
+    if (vv) {
+        vv->len = r->headers_in.server.len;
+        vv->data = r->headers_in.server.data;
+        vv->valid = 1;
+        vv->no_cacheable = 0;
+        vv->not_found = 0;
+    }
+
+    if (r->headers_in.server.len) {
+        r->headers_in.server = host;
+    }
+
+    if (r->headers_in.host) {
+        r->headers_in.host->value = host;
+    }
 
     return NGX_OK;
 }
