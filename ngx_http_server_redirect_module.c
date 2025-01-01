@@ -107,7 +107,7 @@ ngx_http_server_redirect_add_variables(ngx_conf_t *cf)
 {
     ngx_http_variable_t *var;
 
-    var = ngx_http_add_variable(cf, ngx_http_server_redirect_original_host,
+    var = ngx_http_add_variable(cf, &ngx_http_server_redirect_original_host,
                               NGX_HTTP_VAR_CHANGEABLE);
 
     if (var == NULL) {
