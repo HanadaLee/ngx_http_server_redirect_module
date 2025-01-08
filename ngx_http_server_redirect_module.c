@@ -267,9 +267,10 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     ngx_http_server_redirect_conf_t *srcf)
 {
     ngx_http_server_redirect_rule_t  *rules;
-    ngx_str_t                        *server = NULL;
+    ngx_str_t                        *server;
     ngx_uint_t                        i;
     ngx_http_server_redirect_ctx_t   *ctx;
+    ngx_str_t                         val;
 
     if (srcf->rules == NULL || srcf->rules->nelts == 0) {
         return NGX_DECLINED;
@@ -277,22 +278,20 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
 
     rules = srcf->rules->elts;
 
+    server = NULL;
     for (i = 0; i < srcf->rules->nelts; i++) {
         if (rules[i].filter) {
-            ngx_str_t  val;
             if (ngx_http_complex_value(r, rules[i].filter, &val)
                     != NGX_OK) {
                 return NGX_ERROR;
             }
 
-            if ((val.len == 0 || (val.len == 1 && val.data[0] == '0'))) {
+            if (val.len == 0 || (val.len == 1 && val.data[0] == '0')) {
                 if (!rules[i].negative) {
-                    /* Skip due to filter*/
                     continue;
                 }
             } else {
                 if (rules[i].negative) {
-                    /* Skip due to negative filter*/
                     continue;
                 }
             }
@@ -340,7 +339,8 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     ctx->redirect_count++;
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
-                  "server redirect: redirect to new server with host %V", server);
+                  "server redirect: redirect to new server with host %V",
+                  server);
 
     return NGX_OK;
 }
@@ -439,11 +439,11 @@ static ngx_int_t
 ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     ngx_str_t *host)
 {
-    ngx_int_t                  rc;
-    ngx_http_connection_t     *hc;
-    ngx_http_core_loc_conf_t  *clcf;
-    ngx_http_core_srv_conf_t  *cscf;
-    ngx_http_variable_value_t *vv;
+    ngx_int_t                   rc;
+    ngx_http_connection_t      *hc;
+    ngx_http_core_loc_conf_t   *clcf;
+    ngx_http_core_srv_conf_t   *cscf;
+    ngx_http_variable_value_t  *vv;
 
 #if (NGX_SUPPRESS_WARN)
     cscf = NULL;
@@ -501,6 +501,12 @@ ngx_http_server_redirect_find_virtual_server(ngx_connection_t *c,
 {
     ngx_http_core_srv_conf_t  *cscf;
 
+#if (NGX_PCRE)
+    ngx_int_t                  n;
+    ngx_uint_t                 i;
+    ngx_http_server_name_t    *sn;
+#endif
+
     if (virtual_names == NULL) {
         return NGX_DECLINED;
     }
@@ -517,10 +523,6 @@ ngx_http_server_redirect_find_virtual_server(ngx_connection_t *c,
 #if (NGX_PCRE)
 
     if (host->len && virtual_names->nregex) {
-        ngx_int_t                n;
-        ngx_uint_t               i;
-        ngx_http_server_name_t  *sn;
-
         sn = virtual_names->regex;
 
         for (i = 0; i < virtual_names->nregex; i++) {
