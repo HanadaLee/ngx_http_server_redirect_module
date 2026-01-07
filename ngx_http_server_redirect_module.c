@@ -10,7 +10,7 @@
 
 
 typedef struct {
-    ngx_str_t                  server;
+    ngx_http_complex_value_t  *server;
     ngx_http_complex_value_t  *filter;
     ngx_int_t                  negative;
 } ngx_http_server_redirect_rule_t;
@@ -163,7 +163,22 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_memzero(rule, sizeof(ngx_http_server_redirect_rule_t));
 
     value = cf->args->elts;
-    rule->server = value[1];
+
+    ngx_memzero(&ccv, sizeof(ngx_http_compile_complex_value_t));
+
+    ccv.cf = cf;
+    ccv.value = &value[1];
+    ccv.complex_value = ngx_palloc(cf->pool,
+                                   sizeof(ngx_http_complex_value_t));
+    if (ccv.complex_value == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    if (ngx_http_compile_complex_value(&ccv) != NGX_OK) {
+        return NGX_CONF_ERROR;
+    }
+
+    rule->server = ccv.complex_value;
 
     if (cf->args->nelts == 3) {
         if (ngx_strncmp(value[2].data, "if=", 3) == 0) {
@@ -185,7 +200,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         ccv.cf = cf;
         ccv.value = &s;
         ccv.complex_value = ngx_palloc(cf->pool,
-                                    sizeof(ngx_http_complex_value_t));
+                                       sizeof(ngx_http_complex_value_t));
         if (ccv.complex_value == NULL) {
             return NGX_CONF_ERROR;
         }
@@ -267,7 +282,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     ngx_http_server_redirect_conf_t *srcf)
 {
     ngx_http_server_redirect_rule_t  *rules;
-    ngx_str_t                        *server;
+    ngx_str_t                         server;
     ngx_uint_t                        i;
     ngx_http_server_redirect_ctx_t   *ctx;
     ngx_str_t                         val;
@@ -278,7 +293,8 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
 
     rules = srcf->rules->elts;
 
-    server = NULL;
+    server.len = 0;
+    server.data = NULL;
     for (i = 0; i < srcf->rules->nelts; i++) {
         if (rules[i].filter) {
             if (ngx_http_complex_value(r, rules[i].filter, &val)
@@ -297,15 +313,22 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
             }
         }
 
-        server = &rules[i].server;
+        if (ngx_http_complex_value(r, rules[i].server, &server) != NGX_OK) {
+            return NGX_ERROR;
+        }
+
+        if (server.len == 0) {
+            continue;
+        }
+
         break;
     }
 
-    if (server == NULL || server->data == NULL || server->len == 0) {
+    if (server.len == 0) {
         return NGX_DECLINED;
     }
 
-    if (ngx_http_validate_host(server, r->pool, 0) != NGX_OK) {
+    if (ngx_http_validate_host(&server, r->pool, 0) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server redirect: ignore server redirect "
                       "due to validate host failure");
@@ -330,7 +353,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
         return NGX_DONE;
     }
 
-    if (ngx_http_server_redirect_set_virtual_server(r, server) == NGX_ERROR) {
+    if (ngx_http_server_redirect_set_virtual_server(r, &server) == NGX_ERROR) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server redirect: failed to redirect server");
         return NGX_ERROR;
@@ -340,7 +363,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
 
     ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                   "server redirect: redirect to new server with host %V",
-                  server);
+                  &server);
 
     return NGX_OK;
 }
