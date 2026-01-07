@@ -10,6 +10,7 @@
   - [Synopsis](#synopsis)
     - [Basic Redirection](#basic-redirection)
     - [Conditional Redirection](#conditional-redirection)
+    - [Schedule Redirection](#schedule-redirection)
   - [Configuration](#configuration)
     - [Directive: `server_redirect`](#directive-server_redirect)
     - [Directive: `schedule_redirect`](#directive-schedule_redirect)
@@ -147,9 +148,9 @@ http {
 
 Redirect the current request to another server. The target server must have the same listening port as the current server. 
 
-The target host should be a specific host name just like the host in the request header. Even if the target server you want to redirect to is a wildcard domain name or a regular expression.
+The `target_host` value should be a specific host name just like the host in the request header. Even if the target server you want to redirect to is a wildcard domain or a regular expression. The `target_host` value can contain variables. If `target_host` value is empty, it will be skipped.
 
-If the target server cannot be found, it will be redirected to the default server.
+If the target server cannot be found, the request will be redirected to the default server.
 
 The if parameter enables conditional redirection. A request will not be redirected if the condition evaluates to “0” or an empty string. In addition, you can also use the form of `if!=` to make negative judgments.
 
