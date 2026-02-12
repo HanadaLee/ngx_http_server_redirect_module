@@ -286,6 +286,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     ngx_uint_t                        i;
     ngx_http_server_redirect_ctx_t   *ctx;
     ngx_str_t                         val;
+    ngx_int_t                         rc;
 
     if (srcf->rules == NULL || srcf->rules->nelts == 0) {
         return NGX_DECLINED;
@@ -353,10 +354,15 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
         return NGX_DONE;
     }
 
-    if (ngx_http_server_redirect_set_virtual_server(r, &server) == NGX_ERROR) {
+    rc = ngx_http_server_redirect_set_virtual_server(r, &server);
+    if (rc == NGX_ERROR) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server redirect: failed to redirect server");
         return NGX_ERROR;
+    }
+
+    if (rc == NGX_DECLINED) {
+        return NGX_DECLINED;
     }
 
     ctx->redirect_count++;
@@ -376,6 +382,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
     size_t                            host_len;
     ngx_str_t                         new_host, new_uri, new_unparsed_uri;
     u_char                           *p;
+    ngx_int_t                         rc;
 
     if (r->uri.len <= 2) {
         return NGX_DECLINED;
@@ -418,10 +425,15 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
         return NGX_DONE;
     }
 
-    if (ngx_http_server_redirect_set_virtual_server(r, &new_host) == NGX_ERROR) {
+    rc = ngx_http_server_redirect_set_virtual_server(r, &new_host);
+    if (rc == NGX_ERROR) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "schedule redirect: failed to redirect server");
         return NGX_ERROR;
+    }
+
+    if (rc == NGX_DECLINED) {
+        return NGX_DECLINED;
     }
 
     ctx->redirect_count++;
@@ -473,6 +485,16 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
 #endif
 
     hc = r->http_connection;
+
+    /* skip redirect if target host is the same as current host */
+    if (r->headers_in.server.len == host->len
+        && ngx_strncasecmp(r->headers_in.server.data,
+                           host->data, host->len) == 0)
+    {
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
+                      "server redirect: skip redirect to same host %V", host);
+        return NGX_DECLINED;
+    }
 
     rc = ngx_http_server_redirect_find_virtual_server(r->connection,
                                       hc->addr_conf->virtual_names,
