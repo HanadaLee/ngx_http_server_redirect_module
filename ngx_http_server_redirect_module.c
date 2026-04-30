@@ -28,10 +28,11 @@ typedef struct {
 
 
 static ngx_int_t ngx_http_server_redirect_add_variables(ngx_conf_t *cf);
-static ngx_int_t ngx_http_server_redirect_original_host_variable(
+static ngx_int_t ngx_http_server_redirect_null_variable(
     ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
-static void * ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
-static char * ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static void *ngx_http_server_redirect_create_conf(ngx_conf_t *cf);
+static char *ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
 static ngx_int_t ngx_http_server_redirect_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_server_redirect_handle_server_redirect(
     ngx_http_request_t *r, ngx_http_server_redirect_conf_t *srcf);
@@ -47,7 +48,15 @@ static ngx_int_t ngx_http_server_redirect_init(ngx_conf_t *cf);
 
 static ngx_str_t  ngx_http_server_redirect_original_host
                     = ngx_string("server_redirect_original_host");
+#if nginx_version >= 1029004
+static ngx_str_t  ngx_http_server_redirect_original_port
+                    = ngx_string("server_redirect_original_port");
+#endif
 static ngx_uint_t  ngx_http_server_redirect_original_host_index;
+#if nginx_version >= 1029004
+static ngx_uint_t  ngx_http_server_redirect_original_port_index;
+#endif
+
 
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
@@ -107,28 +116,47 @@ ngx_http_server_redirect_add_variables(ngx_conf_t *cf)
     ngx_http_variable_t  *var;
 
     var = ngx_http_add_variable(cf, &ngx_http_server_redirect_original_host,
-            NGX_HTTP_VAR_CHANGEABLE);
-
+                                NGX_HTTP_VAR_CHANGEABLE);
     if (var == NULL) {
         return NGX_ERROR;
     }
 
-    var->get_handler = ngx_http_server_redirect_original_host_variable;
+    var->get_handler = ngx_http_server_redirect_null_variable;
 
     n = ngx_http_get_variable_index(cf,
-            &ngx_http_server_redirect_original_host);
+                                    &ngx_http_server_redirect_original_host);
     if (n == NGX_ERROR) {
         return NGX_ERROR;
     }
 
     ngx_http_server_redirect_original_host_index = n;
 
+#if nginx_version >= 1029004
+
+    var = ngx_http_add_variable(cf, &ngx_http_server_redirect_original_port,
+                                NGX_HTTP_VAR_CHANGEABLE);
+    if (var == NULL) {
+        return NGX_ERROR;
+    }
+
+    var->get_handler = ngx_http_server_redirect_null_variable;
+
+    n = ngx_http_get_variable_index(cf,
+                                    &ngx_http_server_redirect_original_port);
+    if (n == NGX_ERROR) {
+        return NGX_ERROR;
+    }
+
+    ngx_http_server_redirect_original_port_index = n;
+
+#endif
+
     return NGX_OK;
 }
 
 
 static ngx_int_t
-ngx_http_server_redirect_original_host_variable(ngx_http_request_t *r,
+ngx_http_server_redirect_null_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
     *v = ngx_http_variable_null_value;
@@ -149,7 +177,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (srcf->rules == NULL) {
         srcf->rules = ngx_array_create(cf->pool, 4,
-            sizeof(ngx_http_server_redirect_rule_t));
+                                      sizeof(ngx_http_server_redirect_rule_t));
         if (srcf->rules == NULL) {
             return NGX_CONF_ERROR;
         }
@@ -185,10 +213,12 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             s.len = value[2].len - 3;
             s.data = value[2].data + 3;
             rule->negative = 0;
-        } else if (ngx_strncmp(value[2].data, "if!=", 4) == 0){
+
+        } else if (ngx_strncmp(value[2].data, "if!=", 4) == 0) {
             s.len = value[2].len - 4;
             s.data = value[2].data + 4;
             rule->negative = 1;
+
         } else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                 "invalid parameter \"%V\"", &value[2]);
@@ -210,6 +240,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
 
         rule->filter = ccv.complex_value;
+
     } else {
         rule->negative = 0;
         rule->filter = NULL;
@@ -307,6 +338,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
                 if (!rules[i].negative) {
                     continue;
                 }
+
             } else {
                 if (rules[i].negative) {
                     continue;
@@ -329,12 +361,25 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
         return NGX_DECLINED;
     }
 
+#if nginx_version >= 1029004
+
+    if (ngx_http_validate_host(&server, NULL, r->pool, 0) != NGX_OK) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "server redirect: ignore server redirect "
+                      "due to validate host failure");
+        return NGX_DECLINED;
+    }
+
+#else
+
     if (ngx_http_validate_host(&server, r->pool, 0) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "server redirect: ignore server redirect "
                       "due to validate host failure");
         return NGX_DECLINED;
     }
+
+#endif
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
 
@@ -402,11 +447,24 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
     new_host.len = host_len;
     new_host.data = r->uri.data + 1;
 
-    if (ngx_http_validate_host(&new_host, r->pool, 0) != NGX_OK) {
+#if nginx_version >= 1029004
+
+    if (ngx_http_validate_host(&new_host, NULL, r->pool, 0) != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "schedule redirect: invalid host %V", &new_host);
         return NGX_DECLINED;
     }
+
+#else
+
+    if (ngx_http_validate_host(&new_host, r->pool, 0) != NGX_OK) {
+
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "schedule redirect: invalid host %V", &new_host);
+        return NGX_DECLINED;
+    }
+
+#endif
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_server_redirect_module);
 
@@ -415,6 +473,7 @@ ngx_http_server_redirect_handle_schedule_redirect(ngx_http_request_t *r)
         if (ctx == NULL) {
             return NGX_ERROR;
         }
+
         ngx_http_set_ctx(r, ctx, ngx_http_server_redirect_module);
     }
 
@@ -480,6 +539,10 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     ngx_http_core_srv_conf_t   *cscf;
     ngx_http_variable_value_t  *vv;
 
+#if nginx_version >= 1029004
+    ngx_uint_t                  port;
+#endif
+
 #if (NGX_SUPPRESS_WARN)
     cscf = NULL;
 #endif
@@ -497,8 +560,8 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     }
 
     rc = ngx_http_server_redirect_find_virtual_server(r->connection,
-                                      hc->addr_conf->virtual_names,
-                                      host, r, &cscf);
+                                                  hc->addr_conf->virtual_names,
+                                                  host, r, &cscf);
 
     if (rc == NGX_ERROR) {
         ngx_http_close_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
@@ -517,7 +580,7 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     ngx_set_connection_log(r->connection, clcf->error_log);
 
     vv = ngx_http_get_indexed_variable(r,
-        ngx_http_server_redirect_original_host_index);
+                                 ngx_http_server_redirect_original_host_index);
 
     if (vv) {
         vv->len = r->headers_in.server.len;
@@ -534,6 +597,32 @@ ngx_http_server_redirect_set_virtual_server(ngx_http_request_t *r,
     if (r->headers_in.host) {
         r->headers_in.host->value = *host;
     }
+
+#if nginx_version >= 1029004
+
+    vv = ngx_http_get_indexed_variable(r,
+                                 ngx_http_server_redirect_original_port_index);
+    if (vv) {
+        vv->len = 0;
+        vv->valid = 1;
+        vv->no_cacheable = 0;
+        vv->not_found = 0;
+
+        vv->data = ngx_pnalloc(r->pool, sizeof("65535") - 1);
+        if (vv->data == NULL) {
+            return NGX_ERROR;
+        }
+
+        port = r->port;
+
+        if (port > 0 && port < 65536) {
+            vv->len = ngx_sprintf(vv->data, "%ui", port) - vv->data;
+        }
+    }
+
+    r->port = ngx_inet_get_port(r->connection->local_sockaddr);
+
+#endif
 
     return NGX_OK;
 }
