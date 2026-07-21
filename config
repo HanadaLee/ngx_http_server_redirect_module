@@ -1,7 +1,8 @@
 ngx_addon_name=ngx_http_server_redirect_module
 HTTP_MODULES="$HTTP_MODULES $ngx_addon_name"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/$ngx_addon_name.c"
-ngx_module_order="$ngx_addon_name \"
+
+ngx_module_order="$ngx_addon_name \
                   ngx_http_realip_module \
                   ngx_http_write_filter_module \
                   ngx_http_header_filter_module \

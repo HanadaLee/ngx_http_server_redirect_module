@@ -8,11 +8,19 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#if (NGX_CONDITION)
+#include <ngx_http_condition_module.h>
+#endif
+
 
 typedef struct {
     ngx_http_complex_value_t  *server;
+#if (NGX_CONDITION)
+    ngx_condition_expr_id_t    expr_id;
+#else
     ngx_http_complex_value_t  *filter;
     ngx_int_t                  negative;
+#endif
 } ngx_http_server_redirect_rule_t;
 
 
@@ -61,7 +69,12 @@ static ngx_uint_t  ngx_http_server_redirect_original_port_index;
 static ngx_command_t  ngx_http_server_redirect_commands[] = {
 
     { ngx_string("server_redirect"),
-      NGX_HTTP_SRV_CONF|NGX_CONF_TAKE12,
+      NGX_HTTP_SRV_CONF
+#if (NGX_CONDITION)
+                       |NGX_HTTP_SRV_WHEN_CONF|NGX_CONF_TAKE1,
+#else
+                       |NGX_CONF_TAKE12,
+#endif
       ngx_http_server_redirect,
       NGX_HTTP_SRV_CONF_OFFSET,
       0,
@@ -172,7 +185,9 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_server_redirect_rule_t  *rule;
 
     ngx_str_t                        *value;
+#if !(NGX_CONDITION)
     ngx_str_t                         s;
+#endif
     ngx_http_compile_complex_value_t  ccv;
 
     if (srcf->rules == NULL) {
@@ -189,6 +204,10 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
 
     ngx_memzero(rule, sizeof(ngx_http_server_redirect_rule_t));
+
+#if (NGX_CONDITION)
+    rule->expr_id = ngx_condition_get_associated_expr_id(cf);
+#endif
 
     value = cf->args->elts;
 
@@ -208,6 +227,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     rule->server = ccv.complex_value;
 
+#if !(NGX_CONDITION)
     if (cf->args->nelts == 3) {
         if (ngx_strncmp(value[2].data, "if=", 3) == 0) {
             s.len = value[2].len - 3;
@@ -245,6 +265,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         rule->negative = 0;
         rule->filter = NULL;
     }
+#endif
 
     return NGX_CONF_OK;
 }
@@ -316,7 +337,9 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     ngx_str_t                         server;
     ngx_uint_t                        i;
     ngx_http_server_redirect_ctx_t   *ctx;
+#if !(NGX_CONDITION)
     ngx_str_t                         val;
+#endif
     ngx_int_t                         rc;
 
     if (srcf->rules == NULL || srcf->rules->nelts == 0) {
@@ -328,6 +351,13 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
     server.len = 0;
     server.data = NULL;
     for (i = 0; i < srcf->rules->nelts; i++) {
+#if (NGX_CONDITION)
+        if (ngx_http_condition_get_expr_result(r, rules[i].expr_id)
+            != NGX_CONDITION_EXPR_HIT)
+        {
+            continue;
+        }
+#else
         if (rules[i].filter) {
             if (ngx_http_complex_value(r, rules[i].filter, &val)
                     != NGX_OK) {
@@ -345,6 +375,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
                 }
             }
         }
+#endif
 
         if (ngx_http_complex_value(r, rules[i].server, &server) != NGX_OK) {
             return NGX_ERROR;

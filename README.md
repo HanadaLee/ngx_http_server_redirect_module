@@ -7,6 +7,7 @@
   - [Description](#description)
   - [Status](#status)
   - [Installation](#installation)
+  - [Conditional Syntax](#conditional-syntax)
   - [Synopsis](#synopsis)
     - [Basic Redirection](#basic-redirection)
     - [Conditional Redirection](#conditional-redirection)
@@ -30,6 +31,17 @@ This Nginx module is currently considered experimental. Issues and PRs are welco
 ## Installation
 
 To use theses modules, configure your nginx branch with --add-module=/path/to/ngx_http_server_redirect_module.
+
+To enable named conditions, build `ngx_condition_module` and this module statically in the same nginx configuration.
+
+## Conditional Syntax
+
+Conditional syntax is selected at compile time:
+
+- With `ngx_condition_module`, use named `condition` expressions and place `server_redirect` inside a server-level `when` block. `if=` and `if!=` parameters are rejected.
+- Without `ngx_condition_module`, `when` is unavailable and legacy `if=`/`if!=` parameters remain supported. `if=` matches a non-empty value other than `"0"`; `if!=` matches an empty value or `"0"`.
+
+If a condition does not match, that redirect rule is skipped and the next rule can be evaluated.
 
 ## Synopsis
 
@@ -73,13 +85,14 @@ http {
         listen 80;
         server_name example.com;
 
-        # Redirect if request has 'X-Redirect' header and value is not 0 or empty.
-        server_redirect newserver.com if=$http_x_redirect;
+        # With ngx_condition_module.
+        condition redirect_enabled is_not_empty $http_x_redirect;
+        when redirect_enabled {
+            server_redirect newserver.com;
+        }
 
-        # You can use ngx_http_var_module to generate judgment variables based on conditions.
-        # https://git.hanada.info/hanada/ngx_http_var_module
-        # var $is_ipv6 if_find $remote_addr :;
-        # server_redirect newserver.com if=$is_ipv6;
+        # Without ngx_condition_module, use this instead:
+        # server_redirect newserver.com if=$http_x_redirect;
 
         # This module takes effect after the real_ip module,
         # Therefore, the real_ip module's directives will take effect on the server before server redirect.
@@ -140,11 +153,11 @@ http {
 
 ### Directive: `server_redirect`
 
-**Syntax:** *server_redirect target_host [if=condition]*
+**Syntax:** *server_redirect target_host;*
 
 **Default:** *-*
 
-**Context:** *server*
+**Context:** *server, server when*
 
 Redirect the current request to another server. The target server must have the same listening port as the current server. 
 
@@ -152,12 +165,15 @@ The `target_host` value should be a specific host name just like the host in the
 
 If the target server cannot be found, the request will be redirected to the default server.
 
-The if parameter enables conditional redirection. A request will not be redirected if the condition evaluates to “0” or an empty string. In addition, you can also use the form of `if!=` to make negative judgments.
+The legacy `if=` and `if!=` parameters are available only when `ngx_condition_module` is not built.
 
 Here is an example:
 
 ```nginx
-server_redirect newserver.com if=$http_server_redirect;
+condition redirect_enabled is_not_empty $http_server_redirect;
+when redirect_enabled {
+    server_redirect newserver.com;
+}
 ```
 
 This example redirects requests to `newserver.com` if the `Server-Redirect` header has value and value is not 0.
