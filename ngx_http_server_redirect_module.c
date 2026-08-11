@@ -192,7 +192,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (srcf->rules == NULL) {
         srcf->rules = ngx_array_create(cf->pool, 4,
-                                      sizeof(ngx_http_server_redirect_rule_t));
+                                       sizeof(ngx_http_server_redirect_rule_t));
         if (srcf->rules == NULL) {
             return NGX_CONF_ERROR;
         }
@@ -241,7 +241,7 @@ ngx_http_server_redirect(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         } else {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                "invalid parameter \"%V\"", &value[2]);
+                               "invalid parameter \"%V\"", &value[2]);
             return NGX_CONF_ERROR;
         }
 
@@ -359,8 +359,7 @@ ngx_http_server_redirect_handle_server_redirect(ngx_http_request_t *r,
         }
 #else
         if (rules[i].filter) {
-            if (ngx_http_complex_value(r, rules[i].filter, &val)
-                    != NGX_OK) {
+            if (ngx_http_complex_value(r, rules[i].filter, &val) != NGX_OK) {
                 return NGX_ERROR;
             }
 
