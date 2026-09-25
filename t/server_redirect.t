@@ -18,7 +18,7 @@ use Test::Nginx;
 select STDERR; $| = 1;
 select STDOUT; $| = 1;
 
-my $t = Test::Nginx->new()->has(qw/http rewrite ngx_condition_module
+my $t = Test::Nginx->new()->has(qw/http rewrite ngx_expr_module
 	ngx_http_server_redirect_module/)->plan(11);
 
 $t->write_file_expand('nginx.conf', <<'EOF');
@@ -43,8 +43,8 @@ http {
         listen       127.0.0.1:8080;
         server_name  source.local;
 
-        condition blue str_eq $http_x_target blue;
-        condition green str_eq $http_x_target green;
+        expr blue str_eq $http_x_target blue;
+        expr green str_eq $http_x_target green;
 
         when blue {
             server_redirect blue.local;

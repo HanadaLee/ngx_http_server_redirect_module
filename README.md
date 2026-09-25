@@ -32,14 +32,14 @@ This Nginx module is currently considered experimental. Issues and PRs are welco
 
 To use theses modules, configure your nginx branch with --add-module=/path/to/ngx_http_server_redirect_module.
 
-To enable named conditions, build `ngx_condition_module` and this module statically in the same nginx configuration.
+To enable named conditions, build `ngx_expr_module` and this module statically in the same nginx configuration.
 
 ## Conditional Syntax
 
 Conditional syntax is selected at compile time:
 
-- With `ngx_condition_module`, use named `condition` expressions and place `server_redirect` inside a server-level `when` block. `if=` and `if!=` parameters are rejected.
-- Without `ngx_condition_module`, `when` is unavailable and legacy `if=`/`if!=` parameters remain supported. `if=` matches a non-empty value other than `"0"`; `if!=` matches an empty value or `"0"`.
+- With `ngx_expr_module`, use named `expr` expressions and place `server_redirect` inside a server-level `when` block. `if=` and `if!=` parameters are rejected.
+- Without `ngx_expr_module`, `when` is unavailable and legacy `if=`/`if!=` parameters remain supported. `if=` matches a non-empty value other than `"0"`; `if!=` matches an empty value or `"0"`.
 
 If a condition does not match, that redirect rule is skipped and the next rule can be evaluated.
 
@@ -85,13 +85,13 @@ http {
         listen 80;
         server_name example.com;
 
-        # With ngx_condition_module.
-        condition redirect_enabled is_not_empty $http_x_redirect;
+        # With ngx_expr_module.
+        expr redirect_enabled !is_empty $http_x_redirect;
         when redirect_enabled {
             server_redirect newserver.com;
         }
 
-        # Without ngx_condition_module, use this instead:
+        # Without ngx_expr_module, use this instead:
         # server_redirect newserver.com if=$http_x_redirect;
 
         # This module takes effect after the real_ip module,
@@ -165,12 +165,12 @@ The `target_host` value should be a specific host name just like the host in the
 
 If the target server cannot be found, the request will be redirected to the default server.
 
-The legacy `if=` and `if!=` parameters are available only when `ngx_condition_module` is not built.
+The legacy `if=` and `if!=` parameters are available only when `ngx_expr_module` is not built.
 
 Here is an example:
 
 ```nginx
-condition redirect_enabled is_not_empty $http_server_redirect;
+expr redirect_enabled !is_empty $http_server_redirect;
 when redirect_enabled {
     server_redirect newserver.com;
 }
